@@ -1,0 +1,3 @@
+#!/bin/bash
+export PYTHONPATH="/usr/lib/mini-screenshot/vendor${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 /usr/lib/mini-screenshot/main.py "$@"
