@@ -1,6 +1,5 @@
-"""
-ocr.py - Trich xuat text tu anh bang pytesseract + tesseract-ocr.
-"""
+"""Extract text from images via pytesseract + tesseract-ocr."""
+
 import io
 import shutil
 import subprocess
@@ -9,7 +8,7 @@ from PyQt5.QtGui import QPixmap
 
 
 def is_available():
-    """Kiem tra tesseract va pytesseract da cai chua."""
+    """Return True if tesseract and pytesseract are available."""
     if shutil.which("tesseract") is None:
         return False
     try:

@@ -1,26 +1,21 @@
-"""
-editor.py
-Cua so chinh sua anh chup man hinh: ve hinh chu nhat, ellipse, mui ten, duong
-thang, but ve tu do, highlighter, text, danh so buoc, blur/pixelate, crop,
-color picker, undo/redo, luu file / copy clipboard.
-"""
+"""Screenshot annotation editor: draw, blur, crop, OCR, save / clipboard."""
+
+import math
 import os
 import sys
+
+from PyQt5.QtCore import Qt, QPoint, QPointF, QRect, QRectF, QSize, pyqtSignal
+from PyQt5.QtGui import (
+    QPixmap, QPainter, QPen, QColor, QIcon, QPolygonF, QFont, QCursor, QImage,
+)
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QToolBar, QAction, QColorDialog,
     QFileDialog, QInputDialog, QLabel, QSpinBox, QMessageBox, QActionGroup,
-    QVBoxLayout, QScrollArea, QSizePolicy, QToolButton, QFrame, QStatusBar
+    QVBoxLayout, QScrollArea, QSizePolicy, QToolButton, QFrame, QStatusBar,
 )
-from PyQt5.QtGui import (
-    QPixmap, QPainter, QPen, QColor, QIcon, QPolygonF, QFont, QCursor, QImage
-)
-from PyQt5.QtCore import Qt, QPoint, QPointF, QRect, QRectF, QSize, pyqtSignal
-import math
 
-import clipboard_util
-import icons
-import ocr
-from ocr_dialog import OcrResultDialog
+from . import clipboard_util, icons, ocr
+from .ocr_dialog import OcrResultDialog
 
 
 TOOLS = [

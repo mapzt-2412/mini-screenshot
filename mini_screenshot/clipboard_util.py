@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """Copy PNG to clipboard (Wayland / X11) and show a short notification.
 
-Uu tien:
-  1. wl-copy — khi co WAYLAND_DISPLAY
-  2. Gtk.Clipboard — tray/GTK da co event loop (X11 + nhieu Wayland)
-  3. xclip — X11, neu da cai
-  4. Qt clipboard — chi tin cay khi Qt event loop dang chay (vd. Editor)
+Priority: wl-copy → Gtk.Clipboard → xclip → Qt clipboard (needs Qt loop).
 """
 
 import os

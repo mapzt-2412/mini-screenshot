@@ -15,7 +15,8 @@ echo ">> Cai dat thu vien Python..."
 pip3 install --break-system-packages PyQt5 Pillow pytesseract
 
 echo ""
-echo "Xong! Chay thu bang:"
+echo "Done! Try:"
 echo "  python3 main.py"
+echo "  python3 -m mini_screenshot --tray"
 echo ""
-echo "Goi y: xem README.md de gan phim tat (vi du Ctrl+Shift+S)."
+echo "See README.md for hotkeys (e.g. Ctrl+Shift+S)."

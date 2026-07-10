@@ -1,11 +1,10 @@
-"""
-ocr_dialog.py - Dialog hien thi ket qua OCR voi nut Copy.
-"""
-from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton, QLabel,
-    QApplication,
-)
+"""Dialog that shows OCR results with a Copy button."""
+
 from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import (
+    QApplication, QDialog, QHBoxLayout, QLabel, QPushButton, QTextEdit,
+    QVBoxLayout,
+)
 
 
 DIALOG_QSS = """

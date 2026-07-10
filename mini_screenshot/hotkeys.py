@@ -1,22 +1,9 @@
 #!/usr/bin/env python3
-"""
-hotkeys.py - Phim tat global kieu macOS khi tray dang chay.
+"""Global macOS-style hotkeys while the tray is running.
 
-Mac:
-    Cmd+Shift+3  -> toan man hinh
-    Cmd+Shift+4  -> vung chon
-    Cmd+Shift+5  -> cua so / screenshot UI
-    Ctrl+Cmd+Shift+3/4/5 -> copy clipboard (khong mo editor)
-
-Linux:
-    Ctrl+Shift+3  -> toan man hinh
-    Ctrl+Shift+4  -> vung chon
-    Ctrl+Shift+5  -> cua so dang active
-    Ctrl+Alt+Shift+3/4/5 -> copy clipboard (khong mo editor)
-
-Backend (uu tien GNOME vi Keybinder lech keysym Shift+so tren layout US):
-    1. GNOME gsettings custom-keybindings — dang ky luc mo tray, go luc thoat
-    2. Keybinder3 (X11) — bind ca raw Ctrl+Shift+N lan cooked Ctrl+#/$/%
+Linux bindings: Ctrl+Shift+3/4/5 (editor) and Ctrl+Alt+Shift+3/4/5
+(clipboard only). Prefer GNOME gsettings custom-keybindings; fall back to
+Keybinder3 on X11.
 """
 
 from __future__ import annotations
@@ -26,7 +13,7 @@ import shlex
 import socket
 import sys
 
-from gi.repository import GLib, Gio
+from gi.repository import Gio, GLib
 
 # (gsettings_binding, action_id, label)
 HOTKEYS = (

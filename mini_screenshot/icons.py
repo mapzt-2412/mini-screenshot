@@ -1,11 +1,11 @@
-"""
-icons.py
-Ve icon vector bang QPainter cho toolbar - khong phu thuoc emoji/font he
-thong, dam bao hien thi sac net va dong nhat tren moi may.
-"""
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QPen, QColor, QFont, QPainterPath
-from PyQt5.QtCore import Qt, QRectF, QPointF
+"""Vector toolbar icons drawn with QPainter (no emoji/font dependency)."""
+
 import math
+
+from PyQt5.QtCore import Qt, QPointF, QRectF
+from PyQt5.QtGui import (
+    QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap,
+)
 
 
 def _canvas(size=28):

@@ -1,31 +1,22 @@
-"""
-mac_window_style.py
+"""Post-process a window shot to mimic macOS window chrome.
 
-Hau xu ly anh chup cua so de gia lap style macOS:
-- Bo goc cua so (rounded corners)
-- Drop shadow mo (blur) phia duoi cua so
-- Nen trong suot (RGBA PNG), khong bi vien trang du
+Adds rounded corners, a soft drop shadow, and a transparent RGBA PNG.
+Capture tools only return a flat rectangle; this draws the extras with
+Pillow after the fact.
 
-LY DO CAN MODULE NAY:
-gnome-screenshot / grim+slurp chi tra ve anh raster hinh chu nhat thuan
-tuy - khong co shadow, khong co alpha o goc, vi Mutter/wlroots khong
-expose thong tin do qua cac API chup man hinh nay (khac voi macOS,
-noi WindowServer da render san shadow/alpha truoc khi chup). Module
-nay "ve them" hieu ung do bang Pillow sau khi da chup xong anh cua so.
+Example::
 
-Cach dung:
     from mac_window_style import apply_mac_style
     out_path = apply_mac_style("/tmp/screenshot_capture_123.png")
-    # out_path la file PNG moi, nen trong suot, co shadow + bo goc
 """
 
-from PIL import Image, ImageDraw, ImageFilter
 import os
+
+from PIL import Image, ImageDraw, ImageFilter
 
 
 def _rounded_mask(size, radius):
-    """Tao mask trang-den bo goc, dung antialias bang cach ve o kich thuoc
-    lon hon roi resize xuong (giup net bo goc muot hon, gia lap HiDPI)."""
+    """Build an antialiased rounded-corner mask via supersampling."""
     scale = 4  # supersampling factor -> net hon, gia lap Retina
     w, h = size
     big = Image.new("L", (w * scale, h * scale), 0)

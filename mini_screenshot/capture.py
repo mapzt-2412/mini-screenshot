@@ -1,44 +1,24 @@
-"""
-capture.py
+"""Wayland screenshot backends with desktop auto-detection.
 
-Chup man hinh tren Wayland.
+- GNOME (Mutter): ``gnome-screenshot`` — grim/slurp need wlr-screencopy,
+  which Mutter does not expose.
+- wlroots (Sway/Hyprland): ``grim`` + ``slurp``.
 
-QUAN TRONG:
-- grim/slurp CHI hoat dong tren cac compositor dong wlroots (Sway, Hyprland...).
-  GNOME Shell (Mutter) KHONG ho tro protocol wlr-screencopy ma grim/slurp can,
-  nen tren GNOME Wayland, slurp se khong hien gi ca va tra ve rong.
-- Vi vay module nay tu dong nhan dien desktop environment:
-    + Neu la GNOME       -> dung gnome-screenshot (co san tren Ubuntu)
-    + Neu la wlroots-based -> dung grim + slurp
+Window picking on GNOME uses ``wmctrl`` (focus then shoot). Pure
+Wayland-native windows may be missing from that list. On wlroots,
+``slurp -w`` lets you click a window directly.
 
-- capture_window() ho tro them tham so mac_style=True: sau khi chup xong se
-  goi mac_window_style.apply_mac_style() de bo goc + ve drop shadow + xuat
-  PNG nen trong suot, gia lap style cua so tren macOS. Day la hau xu ly
-  (post-processing) bang Pillow, vi gnome-screenshot/grim+slurp chi tra ve
-  anh raster hinh chu nhat thuan tuy, khong co shadow/alpha nhu macOS
-  WindowServer render san.
-
-CHON CUA SO CU THE (list_windows / capture_window_by_id):
-- gnome-screenshot -w CHI chup duoc cua so dang active/focused - Wayland
-  portal khong cho phep chon 1 cua so bat ky tu ben ngoai (gioi han bao
-  mat). De van cho nguoi dung "click chon cua so" tren GNOME, ta dung
-  `wmctrl` de liet ke cac cua so dang mo, sau do focus (wmctrl -ia <id>)
-  roi moi goi gnome-screenshot -w chup cua so vua duoc focus do.
-- Han che: wmctrl chi thay cac cua so chay qua XWayland (da so app pho
-  bien tren Ubuntu GNOME hien nay van chay qua XWayland nen thuong van
-  hoat dong on). Cua so Wayland-native thuan tuy se KHONG xuat hien
-  trong danh sach - do la gioi han cua Wayland, khong phai loi script.
-- Tren wlroots (Sway/Hyprland), `slurp -w` da cho phep click chon truc
-  tiep 1 cua so bat ky tren man hinh, nen khong can buoc liet ke nay.
+``mac_style=True`` post-processes the shot with Pillow (rounded corners,
+drop shadow, transparent PNG).
 """
 
-import subprocess
-import tempfile
 import os
+import subprocess
 import sys
+import tempfile
 import time
 
-from mac_window_style import apply_mac_style
+from .mac_window_style import apply_mac_style
 
 
 def _check_tool(name):

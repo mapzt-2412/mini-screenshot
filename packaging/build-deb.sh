@@ -72,9 +72,10 @@ mkdir -p "${PKG_DIR}/usr/share/applications"
 mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps"
 
 echo ">> Copy source code..."
-cp main.py capture.py editor.py icons.py ocr.py ocr_dialog.py \
-   mac_window_style.py tray.py hotkeys.py clipboard_util.py _open_editor.py \
-   "${PKG_DIR}/usr/lib/${APP_NAME}/"
+cp main.py tray.py "${PKG_DIR}/usr/lib/${APP_NAME}/"
+cp -a mini_screenshot "${PKG_DIR}/usr/lib/${APP_NAME}/"
+# Drop bytecode if any slipped in
+find "${PKG_DIR}/usr/lib/${APP_NAME}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 
 echo ">> Vendor pytesseract (khong co goi apt python3-pytesseract tren Ubuntu)..."
 VENDOR_DIR="${PKG_DIR}/usr/lib/${APP_NAME}/vendor"
@@ -101,12 +102,13 @@ EOF
 echo ">> Tao script khoi chay usr/bin/${APP_NAME}..."
 cat > "${PKG_DIR}/usr/bin/${APP_NAME}" << EOF
 #!/bin/bash
-export PYTHONPATH="/usr/lib/${APP_NAME}/vendor\${PYTHONPATH:+:\$PYTHONPATH}"
-# Khong co args -> tray (mac dinh). Van goi duoc: ${APP_NAME} --full, --window, ...
+LIB="/usr/lib/${APP_NAME}"
+export PYTHONPATH="\${LIB}/vendor:\${LIB}\${PYTHONPATH:+:\$PYTHONPATH}"
+# No args -> tray (default). Still supports: ${APP_NAME} --full, --window, ...
 if [ \$# -eq 0 ]; then
-  exec python3 /usr/lib/${APP_NAME}/main.py --tray
+  exec python3 "\${LIB}/main.py" --tray
 fi
-exec python3 /usr/lib/${APP_NAME}/main.py "\$@"
+exec python3 "\${LIB}/main.py" "\$@"
 EOF
 chmod +x "${PKG_DIR}/usr/bin/${APP_NAME}"
 
