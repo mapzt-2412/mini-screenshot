@@ -9,6 +9,7 @@ Cach dung:
     python3 main.py --window --mac-style   # chup 1 cua so, bo goc + shadow + nen trong suot kieu macOS
     python3 main.py --delay 3       # doi 3 giay roi chup vung chon
     python3 main.py --delay 3 --full
+    python3 main.py --tray          # mo icon tren system tray (topbar) de chon mode bang menu
 
 Sau khi chup, cua so Edit se tu mo de ban ve/annotate.
 """
@@ -31,11 +32,18 @@ def parse_args():
     parser.add_argument("--mac-style", action="store_true",
                          help="Chi ap dung voi --window: bo goc + drop shadow "
                               "+ nen trong suot kieu macOS")
+    parser.add_argument("--tray", action="store_true",
+                         help="Mo icon tren system tray (topbar) thay vi chup ngay")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    if args.tray:
+        import tray
+        tray.main()
+        return
 
     missing = capture.check_dependencies()
     if missing:

@@ -27,7 +27,9 @@ mkdir -p "${PKG_DIR}/usr/share/applications"
 mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps"
 
 echo ">> Copy source code..."
-cp main.py capture.py editor.py icons.py ocr.py ocr_dialog.py "${PKG_DIR}/usr/lib/${APP_NAME}/"
+cp main.py capture.py editor.py icons.py ocr.py ocr_dialog.py \
+   mac_window_style.py tray.py _open_editor.py \
+   "${PKG_DIR}/usr/lib/${APP_NAME}/"
 
 echo ">> Vendor pytesseract (khong co goi apt python3-pytesseract tren Ubuntu)..."
 VENDOR_DIR="${PKG_DIR}/usr/lib/${APP_NAME}/vendor"
@@ -40,8 +42,8 @@ Version: ${VERSION}
 Section: graphics
 Priority: optional
 Architecture: ${ARCH}
-Depends: python3 (>= 3.8), python3-pyqt5, python3-pil, tesseract-ocr, tesseract-ocr-vie, gnome-screenshot, wl-clipboard
-Recommends: grim, slurp
+Depends: python3 (>= 3.8), python3-pyqt5, python3-pil, tesseract-ocr, tesseract-ocr-vie, gnome-screenshot, wl-clipboard, python3-gi, gir1.2-appindicator3-0.1
+Recommends: grim, slurp, wmctrl, gnome-shell-extension-appindicator
 Maintainer: Ban <you@example.com>
 Description: Mini Screenshot Tool - chup va chinh sua anh man hinh
  Cong cu chup man hinh mini cho Ubuntu/GNOME Wayland, ho tro chon vung,
@@ -72,6 +74,32 @@ Icon=${APP_NAME}
 Terminal=false
 Categories=Graphics;Utility;
 Keywords=screenshot;capture;chup man hinh;
+EOF
+
+echo ">> Tao file .desktop cho che do Tray (icon topbar)..."
+cat > "${PKG_DIR}/usr/share/applications/${APP_NAME}-tray.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=Mini Screenshot Tray
+Comment=Chup man hinh - icon tren topbar de chon mode
+Exec=${APP_NAME} --tray
+Icon=${APP_NAME}
+Terminal=false
+Categories=Graphics;Utility;
+Keywords=screenshot;tray;topbar;chup man hinh;
+EOF
+
+echo ">> Tao file autostart cho che do Tray (tuy chon, khong bat mac dinh)..."
+mkdir -p "${PKG_DIR}/etc/xdg/autostart"
+cat > "${PKG_DIR}/etc/xdg/autostart/${APP_NAME}-tray.desktop" << EOF
+[Desktop Entry]
+Type=Application
+Name=Mini Screenshot Tray
+Comment=Chup man hinh - icon tren topbar de chon mode
+Exec=${APP_NAME} --tray
+Icon=${APP_NAME}
+Terminal=false
+X-GNOME-Autostart-enabled=false
 EOF
 
 echo ">> Set quyen chuan cho package..."
