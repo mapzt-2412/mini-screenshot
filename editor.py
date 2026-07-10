@@ -4,7 +4,7 @@ Cua so chinh sua anh chup man hinh: ve hinh chu nhat, ellipse, mui ten, duong
 thang, but ve tu do, highlighter, text, danh so buoc, blur/pixelate, crop,
 color picker, undo/redo, luu file / copy clipboard.
 """
-import subprocess
+import os
 import sys
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QToolBar, QAction, QColorDialog,
@@ -17,6 +17,7 @@ from PyQt5.QtGui import (
 from PyQt5.QtCore import Qt, QPoint, QPointF, QRect, QRectF, QSize, pyqtSignal
 import math
 
+import clipboard_util
 import icons
 import ocr
 from ocr_dialog import OcrResultDialog
@@ -689,16 +690,17 @@ class EditorWindow(QMainWindow):
         image = self.canvas.get_final_pixmap().toImage()
         QApplication.clipboard().setImage(image)
 
-        # Fallback: cung dung wl-copy neu co, de dam bao paste duoc
-        # sang app khac tren Wayland (mot so app khong doc tot Qt clipboard).
+        # wl-copy de paste sang app khac tren Wayland (Qt clipboard khong
+        # luon duoc app ngoai doc).
+        tmp = "/tmp/_mini_screenshot_clip.png"
         try:
-            tmp = "/tmp/_mini_screenshot_clip.png"
             self.canvas.get_final_pixmap().save(tmp)
-            with open(tmp, "rb") as f:
-                subprocess.run(["wl-copy", "--type", "image/png"],
-                                stdin=f, check=False)
-        except FileNotFoundError:
-            pass
+            clipboard_util.copy_png_file(tmp)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
         self.statusBar().showMessage("Da copy anh vao clipboard", 4000)
 

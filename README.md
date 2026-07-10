@@ -34,6 +34,8 @@ desktop environment de chon backend chup man hinh phu hop tren Wayland:
 - Chup xong se TU DONG mo cua so Edit de ve/annotate ngay, khong can lam
   gi them
 - Luu file (Ctrl+S) hoac copy thang vao clipboard (Ctrl+C) de paste noi khac
+- Khi tray dang chay: `Ctrl+Alt+Shift+3/4/5` chup thang vao clipboard
+  (khong mo Editor), co notification xac nhan
 
 ## Cai dat
 
@@ -87,9 +89,12 @@ Khi `python3 tray.py` (hoac `main.py --tray`) dang chay:
 
 | Phim | Mac tuong ung | Hanh dong |
 |------|---------------|-----------|
-| `Ctrl+Shift+3` | ⌘⇧3 | Toan man hinh |
-| `Ctrl+Shift+4` | ⌘⇧4 | Vung chon |
-| `Ctrl+Shift+5` | ⌘⇧5 | Cua so dang active |
+| `Ctrl+Shift+3` | ⌘⇧3 | Toan man hinh (mo Editor) |
+| `Ctrl+Shift+4` | ⌘⇧4 | Vung chon (mo Editor) |
+| `Ctrl+Shift+5` | ⌘⇧5 | Cua so dang active (mo Editor) |
+| `Ctrl+Alt+Shift+3` | ⌃⌘⇧3 | Toan man hinh → clipboard |
+| `Ctrl+Alt+Shift+4` | ⌃⌘⇧4 | Vung chon → clipboard |
+| `Ctrl+Alt+Shift+5` | ⌃⌘⇧5 | Cua so active → clipboard |
 
 Phim tat tu go khi thoat tray. Tren X11 can `gir1.2-keybinder-3.0`;
 tren GNOME Wayland app tu dang ky qua Settings.
@@ -128,6 +133,7 @@ screenshot-app/
 ├── ocr_dialog.py           # dialog hien thi ket qua OCR + nut Copy
 ├── tray.py                # system tray + menu + goi hotkeys
 ├── hotkeys.py              # phim tat global kieu macOS (Keybinder / GNOME)
+├── clipboard_util.py       # copy PNG clipboard (wl-copy) + notify-send
 ├── install.sh              # script cai dependencies (chay truc tiep bang python3)
 ├── packaging/
 │   ├── build-deb.sh        # script dong goi thanh file .deb

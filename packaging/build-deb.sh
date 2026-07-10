@@ -73,7 +73,7 @@ mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/scalable/apps"
 
 echo ">> Copy source code..."
 cp main.py capture.py editor.py icons.py ocr.py ocr_dialog.py \
-   mac_window_style.py tray.py hotkeys.py _open_editor.py \
+   mac_window_style.py tray.py hotkeys.py clipboard_util.py _open_editor.py \
    "${PKG_DIR}/usr/lib/${APP_NAME}/"
 
 echo ">> Vendor pytesseract (khong co goi apt python3-pytesseract tren Ubuntu)..."

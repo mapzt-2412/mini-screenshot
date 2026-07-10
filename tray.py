@@ -17,6 +17,7 @@ Phim tat noi tai (kieu macOS, chi khi tray dang chay):
     Ctrl+Shift+3  -> toan man hinh   (≈ Cmd+Shift+3)
     Ctrl+Shift+4  -> vung chon       (≈ Cmd+Shift+4)
     Ctrl+Shift+5  -> cua so active   (≈ Cmd+Shift+5)
+    Ctrl+Alt+Shift+3/4/5 -> copy clipboard, khong mo Editor
     X11: Keybinder3.  Wayland/GNOME: dang ky custom shortcut qua gsettings,
     go bo khi thoat tray.
 
@@ -73,6 +74,7 @@ except (ImportError, ValueError):
 from gi.repository import Gtk, Gdk
 
 import capture
+import clipboard_util
 import hotkeys
 
 APP_ID = "mini-screenshot-tray"
@@ -207,12 +209,13 @@ def _open_editor(image_path):
 # Cac hanh dong chup - deu chay qua capture.py that su cua repo
 # ---------------------------------------------------------------------------
 
-def _run_capture(fn, *args, **kwargs):
+def _run_capture(fn, *args, clipboard_only=False, **kwargs):
     """Chay 1 ham capture.* , co ap dung delay dang bat (neu co)."""
     if _state["busy"]:
         return
     _state["busy"] = True
     delay = _state["delay"]
+    path = None
     try:
         if delay > 0 and fn is capture.capture_fullscreen:
             path = capture.capture_with_delay(delay, mode="fullscreen")
@@ -229,7 +232,13 @@ def _run_capture(fn, *args, **kwargs):
         return
     finally:
         _state["busy"] = False
-    _open_editor(path)
+
+    if not path or not os.path.exists(path):
+        return
+    if clipboard_only:
+        clipboard_util.copy_capture_to_clipboard(path)
+    else:
+        _open_editor(path)
 
 
 def do_capture_full(_=None):
@@ -245,6 +254,18 @@ def do_capture_window_current(_=None):
     _run_capture(capture.capture_window, mac_style=True)
 
 
+def do_clip_full(_=None):
+    _run_capture(capture.capture_fullscreen, clipboard_only=True)
+
+
+def do_clip_region(_=None):
+    _run_capture(capture.capture_region, clipboard_only=True)
+
+
+def do_clip_window(_=None):
+    _run_capture(capture.capture_window, mac_style=True, clipboard_only=True)
+
+
 def _on_hotkey(action_id):
     if action_id == "full":
         do_capture_full()
@@ -252,6 +273,12 @@ def _on_hotkey(action_id):
         do_capture_region()
     elif action_id == "window":
         do_capture_window_current()
+    elif action_id == "clip-full":
+        do_clip_full()
+    elif action_id == "clip-region":
+        do_clip_region()
+    elif action_id == "clip-window":
+        do_clip_window()
 
 
 def toggle_delay(item):
@@ -397,7 +424,10 @@ def main():
 
     backend = hotkeys.install(_on_hotkey, os.path.abspath(__file__))
     if backend:
-        print(f"Phim tat: Ctrl+Shift+3/4/5 (backend: {backend})")
+        print(
+            "Phim tat: Ctrl+Shift+3/4/5 (editor), "
+            f"Ctrl+Alt+Shift+3/4/5 (clipboard) (backend: {backend})"
+        )
     else:
         print(
             "Canh bao: khong dang ky duoc phim tat global. "

@@ -6,15 +6,17 @@ Mac:
     Cmd+Shift+3  -> toan man hinh
     Cmd+Shift+4  -> vung chon
     Cmd+Shift+5  -> cua so / screenshot UI
+    Ctrl+Cmd+Shift+3/4/5 -> copy clipboard (khong mo editor)
 
 Linux:
     Ctrl+Shift+3  -> toan man hinh
     Ctrl+Shift+4  -> vung chon
     Ctrl+Shift+5  -> cua so dang active
+    Ctrl+Alt+Shift+3/4/5 -> copy clipboard (khong mo editor)
 
 Backend (uu tien GNOME vi Keybinder lech keysym Shift+so tren layout US):
     1. GNOME gsettings custom-keybindings — dang ky luc mo tray, go luc thoat
-    2. Keybinder3 (X11) — bind ca raw Ctrl+Shift+N lan cooked Ctrl+#/$/% 
+    2. Keybinder3 (X11) — bind ca raw Ctrl+Shift+N lan cooked Ctrl+#/$/%
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ HOTKEYS = (
     ("<Control><Shift>3", "full", "Ctrl+Shift+3"),
     ("<Control><Shift>4", "region", "Ctrl+Shift+4"),
     ("<Control><Shift>5", "window", "Ctrl+Shift+5"),
+    ("<Control><Alt><Shift>3", "clip-full", "Ctrl+Alt+Shift+3"),
+    ("<Control><Alt><Shift>4", "clip-region", "Ctrl+Alt+Shift+4"),
+    ("<Control><Alt><Shift>5", "clip-window", "Ctrl+Alt+Shift+5"),
 )
 
 # Tren layout US: Shift+3/4/5 = #/$/% — Keybinder cooked can bind them.
@@ -38,7 +43,12 @@ _KEYBINDER_ALIASES = {
     "full": ("<Control><Shift>3", "<Control>numbersign"),
     "region": ("<Control><Shift>4", "<Control>dollar"),
     "window": ("<Control><Shift>5", "<Control>percent"),
+    "clip-full": ("<Control><Alt><Shift>3", "<Control><Alt>numbersign"),
+    "clip-region": ("<Control><Alt><Shift>4", "<Control><Alt>dollar"),
+    "clip-window": ("<Control><Alt><Shift>5", "<Control><Alt>percent"),
 }
+
+_ACTION_IDS = frozenset(h[1] for h in HOTKEYS)
 
 _GNOME_PATH_PREFIX = (
     "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/"
@@ -146,7 +156,7 @@ def _start_socket_server(on_action):
             data = conn.recv(64).decode("utf-8", errors="ignore").strip()
         finally:
             conn.close()
-        if data in ("full", "region", "window"):
+        if data in _ACTION_IDS:
             print(f"[hotkey] socket -> {data}", flush=True)
             GLib.idle_add(lambda d=data: on_action(d) or False)
         return True
