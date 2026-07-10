@@ -29,15 +29,25 @@ TOOLS = [
 
 
 class Canvas(QWidget):
-    """Vung ve chinh: giu 1 pixmap goc va cho phep ve annotation len tren."""
+    """Vung ve chinh: giu 1 pixmap goc (day du chat luong) va cho phep ve
+    annotation len tren. Ho tro ZOOM rieng cho phan XEM (khong dung chat
+    luong anh that): khi anh qua to (vd chup toan man hinh 4K), Canvas se
+    hien thi thu nho lai cho vua man hinh, nhung du lieu pixel thuc su
+    (dung khi Luu/Copy/OCR) van giu nguyen do phan giai goc - xem
+    get_final_pixmap()."""
 
     status_message = pyqtSignal(str)
     ocr_requested = pyqtSignal(object)
+    zoom_changed = pyqtSignal(float)
+
+    MIN_ZOOM = 0.1
+    MAX_ZOOM = 4.0
 
     def __init__(self, pixmap, parent=None):
         super().__init__(parent)
         self.base_pixmap = pixmap.copy()
-        self.setFixedSize(self.base_pixmap.size())
+        self.zoom = 1.0
+        self._apply_zoom_size()
 
         self.tool = "pen"
         self.pen_color = QColor(255, 0, 0)
@@ -55,6 +65,42 @@ class Canvas(QWidget):
         self.setMouseTracking(True)
         self.setCursor(Qt.CrossCursor)
 
+    # ---------- zoom ----------
+    def _apply_zoom_size(self):
+        pm = self.current_pixmap() if hasattr(self, "undo_stack") and self.undo_stack else self.base_pixmap
+        w = max(1, round(pm.width() * self.zoom))
+        h = max(1, round(pm.height() * self.zoom))
+        self.setFixedSize(w, h)
+
+    def set_zoom(self, zoom, emit=True):
+        self.zoom = max(self.MIN_ZOOM, min(self.MAX_ZOOM, zoom))
+        self._apply_zoom_size()
+        self.update()
+        if emit:
+            self.zoom_changed.emit(self.zoom)
+
+    def zoom_in(self):
+        self.set_zoom(self.zoom * 1.25)
+
+    def zoom_out(self):
+        self.set_zoom(self.zoom / 1.25)
+
+    def zoom_to_fit(self, available_size):
+        """Tinh zoom sao cho anh vua khung available_size (khong phong to
+        qua 100% neu anh von da nho hon khung)."""
+        pm = self.current_pixmap()
+        aw, ah = max(1, available_size.width()), max(1, available_size.height())
+        fit = min(aw / pm.width(), ah / pm.height())
+        self.set_zoom(min(1.0, fit))
+
+    def zoom_actual_size(self):
+        self.set_zoom(1.0)
+
+    def _map_to_image(self, pos):
+        """Chuyen toa do chuot (khong gian widget da zoom) ve toa do that
+        su tren anh goc (khong gian pixmap)."""
+        return QPoint(int(pos.x() / self.zoom), int(pos.y() / self.zoom))
+
     # ---------- helpers ----------
     def current_pixmap(self):
         return self.undo_stack[-1]
@@ -62,16 +108,19 @@ class Canvas(QWidget):
     def push_undo(self, pixmap):
         self.undo_stack.append(pixmap)
         self.redo_stack.clear()
+        self._apply_zoom_size()
         self.update()
 
     def undo(self):
         if len(self.undo_stack) > 1:
             self.redo_stack.append(self.undo_stack.pop())
+            self._apply_zoom_size()
             self.update()
 
     def redo(self):
         if self.redo_stack:
             self.undo_stack.append(self.redo_stack.pop())
+            self._apply_zoom_size()
             self.update()
 
     def set_tool(self, tool):
@@ -83,14 +132,27 @@ class Canvas(QWidget):
         else:
             self.setCursor(Qt.CrossCursor)
 
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.ControlModifier:
+            if event.angleDelta().y() > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
     # ---------- painting ----------
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.scale(self.zoom, self.zoom)
         painter.drawPixmap(0, 0, self.current_pixmap())
         if self.drawing and self.tool not in ("crop", "blur", "pixelate", "ocr"):
             self._draw_preview(painter)
         elif self.drawing and self.tool in ("crop", "blur", "pixelate", "ocr"):
-            pen = QPen(QColor(0, 150, 255), 1, Qt.DashLine)
+            pen = QPen(QColor(0, 150, 255), max(1, round(1 / self.zoom)), Qt.DashLine)
             painter.setPen(pen)
             painter.drawRect(QRect(self.start_point, self.end_point))
 
@@ -120,7 +182,7 @@ class Canvas(QWidget):
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
-        pos = event.pos()
+        pos = self._map_to_image(event.pos())
 
         if self.tool == "picker":
             color = QColor(self.current_pixmap().toImage().pixel(pos))
@@ -176,7 +238,7 @@ class Canvas(QWidget):
     def mouseMoveEvent(self, event):
         if not self.drawing:
             return
-        pos = event.pos()
+        pos = self._map_to_image(event.pos())
 
         if self.tool == "pen":
             pm = self.current_pixmap()
@@ -211,7 +273,7 @@ class Canvas(QWidget):
         if not self.drawing or event.button() != Qt.LeftButton:
             return
         self.drawing = False
-        pos = event.pos()
+        pos = self._map_to_image(event.pos())
 
         if self.tool in ("pen", "highlighter"):
             self.push_undo(self.current_pixmap().copy())
@@ -240,7 +302,6 @@ class Canvas(QWidget):
             if rect.width() > 3 and rect.height() > 3:
                 cropped = self.current_pixmap().copy(rect)
                 self.base_pixmap = cropped
-                self.setFixedSize(cropped.size())
                 self.push_undo(cropped)
                 self.status_message.emit("Da crop anh")
 
@@ -413,12 +474,30 @@ class EditorWindow(QMainWindow):
 
         self._tool_buttons = {}
         self._build_toolbar()
+        self.canvas.zoom_changed.connect(self._update_zoom_label)
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage("San sang. Chon cong cu va ve len anh.", 4000)
 
         screen = QApplication.primaryScreen().availableGeometry()
-        w = min(pixmap.width() + 60, screen.width() - 60)
-        h = min(pixmap.height() + 140, screen.height() - 60)
+        # Chua toolbar/statusbar/khung cua so - danh khoang trong cho chung
+        # khi tinh khung hinh vua man hinh cho phan xem (canvas).
+        chrome_w, chrome_h = 60, 140
+        avail_w = max(320, screen.width() - 60 - chrome_w)
+        avail_h = max(240, screen.height() - 60 - chrome_h)
+
+        if pixmap.width() > avail_w or pixmap.height() > avail_h:
+            self.canvas.zoom_to_fit(QSize(avail_w, avail_h))
+            self.statusBar().showMessage(
+                f"Anh lon ({pixmap.width()}x{pixmap.height()}) - da thu nho "
+                f"phan xem con {int(self.canvas.zoom * 100)}% cho vua man "
+                f"hinh (chat luong luu/copy van giu nguyen). Ctrl+lan chuot "
+                f"hoac nut zoom tren toolbar de phong to/thu nho.",
+                8000,
+            )
+        else:
+            self.statusBar().showMessage("San sang. Chon cong cu va ve len anh.", 4000)
+
+        w = min(self.canvas.width() + chrome_w, screen.width() - 60)
+        h = min(self.canvas.height() + chrome_h, screen.height() - 60)
         self.resize(max(w, 640), max(h, 480))
 
     # ---------------- toolbar ----------------
@@ -487,6 +566,37 @@ class EditorWindow(QMainWindow):
         tb.addAction(redo_act)
         self._style_action_button(tb, redo_act)
 
+        tb.addWidget(_vsep())
+
+        # --- zoom ---
+        zoom_out_btn = QToolButton()
+        zoom_out_btn.setText("−")
+        zoom_out_btn.setToolTip("Thu nho (Ctrl+lăn chuột xuống)")
+        zoom_out_btn.setFixedSize(30, 30)
+        zoom_out_btn.clicked.connect(self.canvas.zoom_out)
+        tb.addWidget(zoom_out_btn)
+
+        self.zoom_label = QToolButton()
+        self.zoom_label.setText("100%")
+        self.zoom_label.setToolTip("Bấm để về 100% (kích thước thật)")
+        self.zoom_label.setFixedSize(56, 30)
+        self.zoom_label.clicked.connect(self.canvas.zoom_actual_size)
+        tb.addWidget(self.zoom_label)
+
+        zoom_in_btn = QToolButton()
+        zoom_in_btn.setText("+")
+        zoom_in_btn.setToolTip("Phóng to (Ctrl+lăn chuột lên)")
+        zoom_in_btn.setFixedSize(30, 30)
+        zoom_in_btn.clicked.connect(self.canvas.zoom_in)
+        tb.addWidget(zoom_in_btn)
+
+        fit_btn = QToolButton()
+        fit_btn.setText("⤢")
+        fit_btn.setToolTip("Thu vừa khung cửa sổ")
+        fit_btn.setFixedSize(30, 30)
+        fit_btn.clicked.connect(self._zoom_fit_to_window)
+        tb.addWidget(fit_btn)
+
         # --- spacer de day export sang phai ---
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -518,6 +628,15 @@ class EditorWindow(QMainWindow):
         if btn:
             btn.setFixedSize(38, 38)
             btn.setIconSize(QSize(20, 20))
+
+    def _update_zoom_label(self, zoom):
+        self.zoom_label.setText(f"{int(round(zoom * 100))}%")
+
+    def _zoom_fit_to_window(self):
+        # Dung kich thuoc vung cuon hien tai lam khung tham chieu.
+        viewport = self.centralWidget()
+        size = viewport.viewport().size() if hasattr(viewport, "viewport") else viewport.size()
+        self.canvas.zoom_to_fit(size)
 
     def _choose_color(self):
         color = QColorDialog.getColor(self.canvas.pen_color, self, "Chon mau")

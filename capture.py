@@ -17,6 +17,19 @@ QUAN TRONG:
   (post-processing) bang Pillow, vi gnome-screenshot/grim+slurp chi tra ve
   anh raster hinh chu nhat thuan tuy, khong co shadow/alpha nhu macOS
   WindowServer render san.
+
+CHON CUA SO CU THE (list_windows / capture_window_by_id):
+- gnome-screenshot -w CHI chup duoc cua so dang active/focused - Wayland
+  portal khong cho phep chon 1 cua so bat ky tu ben ngoai (gioi han bao
+  mat). De van cho nguoi dung "click chon cua so" tren GNOME, ta dung
+  `wmctrl` de liet ke cac cua so dang mo, sau do focus (wmctrl -ia <id>)
+  roi moi goi gnome-screenshot -w chup cua so vua duoc focus do.
+- Han che: wmctrl chi thay cac cua so chay qua XWayland (da so app pho
+  bien tren Ubuntu GNOME hien nay van chay qua XWayland nen thuong van
+  hoat dong on). Cua so Wayland-native thuan tuy se KHONG xuat hien
+  trong danh sach - do la gioi han cua Wayland, khong phai loi script.
+- Tren wlroots (Sway/Hyprland), `slurp -w` da cho phep click chon truc
+  tiep 1 cua so bat ky tren man hinh, nen khong can buoc liet ke nay.
 """
 
 import subprocess
@@ -72,13 +85,14 @@ def _gnome_capture(extra_args, delay=0):
     cmd += extra_args + ["-f", out_path]
 
     try:
-        subprocess.run(cmd, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError:
         print("Loi: khong tim thay 'gnome-screenshot'. "
               "Cai dat: sudo apt install gnome-screenshot")
         sys.exit(1)
-    except subprocess.CalledProcessError:
-        return None  # nguoi dung nhan Esc / huy chon vung
+
+    if result.returncode != 0:
+        return None  # nguoi dung nhan Esc / huy chon vung, hoac loi that su
 
     if not os.path.exists(out_path):
         return None
@@ -141,6 +155,76 @@ def _wlroots_capture_window():
 
 
 # ---------------------------------------------------------------------------
+# Chon cua so tu danh sach (dung chung cho GNOME, qua wmctrl)
+# ---------------------------------------------------------------------------
+
+def list_windows():
+    """Liet ke cac cua so dang mo bang wmctrl.
+
+    Tra ve:
+        - list[(win_id, title)]  neu thanh cong (co the rong neu khong
+          tim thay cua so nao qua XWayland)
+        - None neu chua cai wmctrl (khac voi list rong)
+
+    Loc bo cac "cua so" rac khong phai app that su - vi du GNOME Shell doi
+    khi tra ve title kieu "@!1920,0;BDHF" cho cac helper window an
+    (khong co tieu de that), khong co ich gi cho nguoi dung chon.
+    """
+    if not _check_tool("wmctrl"):
+        return None
+    try:
+        out = subprocess.run(
+            ["wmctrl", "-lx"], capture_output=True, text=True, check=True
+        ).stdout
+    except subprocess.CalledProcessError:
+        return None
+
+    windows = []
+    for line in out.splitlines():
+        parts = line.split(None, 4)
+        if len(parts) < 5:
+            continue
+        win_id, _desktop, _wm_class, _host, title = parts
+        title = title.strip()
+        if not title or title.startswith("@!"):
+            continue
+        windows.append((win_id, title))
+    return windows
+
+
+def focus_window(win_id):
+    """Focus 1 cua so cu the qua wmctrl, roi doi 1 chut de GNOME chuyen
+    focus xong truoc khi chup (tranh chup nham cua so cu)."""
+    if _check_tool("wmctrl"):
+        subprocess.run(["wmctrl", "-ia", win_id], capture_output=True, text=True)
+        time.sleep(0.8)
+
+
+def capture_window_by_id(win_id, mac_style=False, delay=0):
+    """Focus dung cua so co win_id (lay tu list_windows()) roi chup no.
+
+    Tren GNOME: focus xong goi gnome-screenshot -w (chup cua so dang active,
+    luc nay chinh la cua so vua duoc focus).
+    Tren wlroots: khong can buoc nay (slurp -w da cho click chon truc tiep),
+    nhung van ho tro de code goi duoc dong nhat - se chup toan man hinh
+    cua so da focus bang grim (khong chinh xac bang slurp -w truc tiep).
+    """
+    focus_window(win_id)
+
+    if _is_gnome():
+        raw_path = _gnome_capture(["-w"], delay=delay)
+    else:
+        time.sleep(max(0, delay))
+        raw_path = _wlroots_capture_window()
+
+    if not raw_path:
+        return None
+    if mac_style:
+        return apply_mac_style(raw_path)
+    return raw_path
+
+
+# ---------------------------------------------------------------------------
 # API public - tu dong chon backend phu hop
 # ---------------------------------------------------------------------------
 
@@ -160,7 +244,8 @@ def capture_fullscreen():
 
 def capture_window(mac_style=False):
     """Chup 1 cua so. Tren GNOME se chup cua so dang active (khong click-chon
-    duoc do gioi han cua Wayland portal).
+    duoc do gioi han cua Wayland portal) - dung capture_window_by_id() /
+    list_windows() neu muon cho nguoi dung chon dung cua so.
 
     mac_style=True: sau khi chup, ap dung bo goc + drop shadow + nen trong
     suot kieu macOS (xem mac_window_style.py). Tra ve duong dan anh moi.

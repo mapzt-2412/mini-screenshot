@@ -3,9 +3,10 @@
 set -e
 
 echo ">> Cai dat cong cu he thong..."
-echo "   (gnome-screenshot cho GNOME Wayland; grim/slurp cho wlroots neu can)"
+echo "   (gnome-screenshot cho GNOME Wayland; grim/slurp cho wlroots neu can;"
+echo "    wmctrl de cho phep popup chon cua so khi chup --window)"
 sudo apt update
-sudo apt install -y gnome-screenshot wl-clipboard python3-pip tesseract-ocr tesseract-ocr-vie
+sudo apt install -y gnome-screenshot wl-clipboard python3-pip tesseract-ocr tesseract-ocr-vie wmctrl
 # grim + slurp chi can neu ban dung Sway/Hyprland (wlroots-based), khong bat
 # buoc tren GNOME nhung cai them cung khong hai gi:
 sudo apt install -y grim slurp || true

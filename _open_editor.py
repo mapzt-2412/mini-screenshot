@@ -7,6 +7,14 @@ va chay Qt event loop cua rieng no. Duoc tray.py goi bang subprocess.Popen
 de khong bi xung dot voi Gtk.main() dang chay trong tien trinh tray.
 """
 import sys
+import os
+
+# Xem giai thich chi tiet trong main.py - ep Qt chay qua XWayland de tranh
+# loi cua so/dialog khong nhan focus tren GNOME Wayland. Phai set truoc
+# khi import editor.py (vi editor.py import PyQt5).
+if os.environ.get("WAYLAND_DISPLAY") and not os.environ.get("QT_QPA_PLATFORM"):
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+
 from editor import launch_editor
 
 

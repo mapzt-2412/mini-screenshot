@@ -8,25 +8,48 @@ EditorWindow (editor.py) giong het khi chay `python3 main.py`.
 Cac mode:
     - Chup toan man hinh          -> capture.capture_fullscreen()
     - Chup vung chon              -> capture.capture_region()
-    - Chup cua so hien tai        -> capture.capture_window()
-    - Chup cua so (style macOS)   -> capture.capture_window(mac_style=True)
-    - Chon cua so tu danh sach    -> liet ke cac cua so dang mo (wmctrl),
-                                      focus cua so duoc chon, roi chup no
+    - Chup cua so (submenu)       -> chup "Cua so hien tai" hoac chon dung
+                                      1 cua so trong danh sach (wmctrl).
+                                      Moi lan chup cua so deu ap dung style
+                                      macOS (bo goc + shadow) noi tai.
+
+Phim tat noi tai (kieu macOS, chi khi tray dang chay):
+    Ctrl+Shift+3  -> toan man hinh   (≈ Cmd+Shift+3)
+    Ctrl+Shift+4  -> vung chon       (≈ Cmd+Shift+4)
+    Ctrl+Shift+5  -> cua so active   (≈ Cmd+Shift+5)
+    X11: Keybinder3.  Wayland/GNOME: dang ky custom shortcut qua gsettings,
+    go bo khi thoat tray.
 
 GIOI HAN QUAN TRONG (da ghi trong capture.py):
     Tren GNOME Wayland, khong co API chinh thuc de liet ke + chon 1 cua so
-    cu the tu ben ngoai (gioi han bao mat cua Wayland portal). Menu "Chon
-    cua so tu danh sach" o day dung `wmctrl`, chi thay duoc cac cua so
-    chay qua XWayland (phan lon app pho bien tren Ubuntu GNOME hien nay
-    van chay qua XWayland nen thuong van hoat dong). Cua so Wayland-native
-    thuan tuy se KHONG xuat hien trong danh sach nay - do la gioi han cua
-    Wayland, khong phai loi cua script.
+    cu the tu ben ngoai (gioi han bao mat cua Wayland portal). Danh sach
+    cua so o day dung `wmctrl`, chi thay duoc cac cua so chay qua XWayland
+    (phan lon app pho bien tren Ubuntu GNOME hien nay van chay qua XWayland
+    nen thuong van hoat dong). Cua so Wayland-native thuan tuy se KHONG
+    xuat hien trong danh sach nay - do la gioi han cua Wayland, khong phai
+    loi cua script.
+
+    Danh sach cua so chi duoc build luc mo submenu / bam "Lam moi danh
+    sach" (AppIndicator/libdbusmenu khong tu fire su kien khi hover vao
+    submenu nen khong the auto-refresh moi lan mo).
 
 YEU CAU HE THONG THEM (ngoai nhung gi main.py da can):
     sudo apt install python3-gi gir1.2-appindicator3-0.1 wmctrl
+    + (khuyen nghi, X11) gir1.2-keybinder-3.0  — phim tat global
     + extension "AppIndicator and KStatusNotifierItem Support" tren GNOME
       (https://extensions.gnome.org/extension/615/appindicator-support/)
       neu khong thi icon se khong hien tren topbar.
+
+GIAO DIEN / DARK THEME:
+    Menu duoc style dark bang 1 CssProvider ap dung cho toan Screen (xem
+    _apply_dark_theme()). Luu y: neu topbar dang dung extension
+    "AppIndicator and KStatusNotifierItem Support", menu duoc GNOME Shell
+    ve lai bang widget rieng cua Shell (St), KHONG phai GtkMenu thuan, nen
+    CSS o day co the KHONG anh huong toi giao dien do - trong truong hop
+    do, dark/light theme cua menu se theo theme he thong (Settings >
+    Appearance) chu khong theo app nay dieu khien duoc. Neu chay qua
+    Gtk.StatusIcon fallback (khong co appindicator extension) thi CSS
+    chac chan co tac dung vi do la GtkMenu thuan cua chinh app.
 
 CHAY:
     python3 tray.py
@@ -36,9 +59,7 @@ CHAY:
 
 import os
 import sys
-import shutil
 import subprocess
-import time
 
 import gi
 gi.require_version("Gtk", "3.0")
@@ -49,15 +70,121 @@ try:
 except (ImportError, ValueError):
     HAS_INDICATOR = False
 
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, Gdk
 
 import capture
+import hotkeys
 
 APP_ID = "mini-screenshot-tray"
 ICON_NAME = "camera-photo-symbolic"
 
-# so giay delay ap dung cho lan chup tiep theo (bat/tat qua menu checkbox)
-_state = {"delay": 0}
+# trang thai dung chung cho lan chup tiep theo (bat/tat qua menu)
+_state = {"delay": 0, "busy": False}
+
+
+# ---------------------------------------------------------------------------
+# Dark theme cho menu (chi co tac dung neu menu duoc ve bang GtkMenu thuan -
+# xem ghi chu o dau file)
+# ---------------------------------------------------------------------------
+
+_MENU_CSS = b"""
+menu {
+    background-color: #16181d;
+    color: #eef0f4;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+menuitem {
+    color: #eef0f4;
+    border-radius: 9px;
+    padding: 9px 14px;
+    margin: 1px 0px;
+    min-height: 22px;
+    font-size: 10.5pt;
+    font-weight: 500;
+}
+menuitem:hover, menuitem:selected {
+    background-color: #2b3344;
+    color: #ffffff;
+}
+menuitem:disabled {
+    color: #6a7180;
+    font-weight: 400;
+}
+menuitem check, menuitem radio {
+    color: #6ea8ff;
+    min-height: 14px;
+    min-width: 14px;
+}
+menu separator {
+    background-color: rgba(255, 255, 255, 0.08);
+    min-height: 1px;
+    margin: 6px 8px;
+}
+arrow {
+    color: #8b93a3;
+    min-height: 10px;
+    min-width: 10px;
+}
+"""
+
+_HEADER_CSS = b"""
+label.mini-screenshot-header-title {
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 11.5pt;
+    letter-spacing: 0.2px;
+}
+label.mini-screenshot-header-subtitle {
+    color: #8b93a3;
+    font-size: 8.5pt;
+}
+label.mini-screenshot-accel {
+    color: #8b93a3;
+    font-size: 9pt;
+    font-weight: 400;
+}
+"""
+
+
+def _apply_dark_theme():
+    for css in (_MENU_CSS, _HEADER_CSS):
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css)
+        screen = Gdk.Screen.get_default()
+        if screen is not None:
+            Gtk.StyleContext.add_provider_for_screen(
+                screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+
+
+def _build_header():
+    """Hang dau menu khong bam duoc - icon + ten app."""
+    item = Gtk.MenuItem()
+    item.set_sensitive(False)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+    box.set_margin_start(6)
+    box.set_margin_end(6)
+    box.set_margin_top(4)
+    box.set_margin_bottom(6)
+
+    icon = Gtk.Image.new_from_icon_name(ICON_NAME, Gtk.IconSize.LARGE_TOOLBAR)
+    box.pack_start(icon, False, False, 0)
+
+    text_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+    title = Gtk.Label(label="Mini Screenshot", xalign=0)
+    title.get_style_context().add_class("mini-screenshot-header-title")
+    subtitle = Gtk.Label(label="Chụp nhanh · chỉnh sửa ngay", xalign=0)
+    subtitle.get_style_context().add_class("mini-screenshot-header-subtitle")
+    text_box.pack_start(title, False, False, 0)
+    text_box.pack_start(subtitle, False, False, 0)
+    box.pack_start(text_box, True, True, 0)
+
+    item.add(box)
+    return item
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +209,9 @@ def _open_editor(image_path):
 
 def _run_capture(fn, *args, **kwargs):
     """Chay 1 ham capture.* , co ap dung delay dang bat (neu co)."""
+    if _state["busy"]:
+        return
+    _state["busy"] = True
     delay = _state["delay"]
     try:
         if delay > 0 and fn is capture.capture_fullscreen:
@@ -90,13 +220,15 @@ def _run_capture(fn, *args, **kwargs):
             path = capture.capture_with_delay(delay, mode="region")
         elif delay > 0 and fn is capture.capture_window:
             path = capture.capture_with_delay(
-                delay, mode="window", mac_style=kwargs.get("mac_style", False)
+                delay, mode="window", mac_style=True
             )
         else:
             path = fn(*args, **kwargs)
     except SystemExit:
         # capture.py goi sys.exit(1) neu thieu tool he thong
         return
+    finally:
+        _state["busy"] = False
     _open_editor(path)
 
 
@@ -108,24 +240,42 @@ def do_capture_region(_=None):
     _run_capture(capture.capture_region)
 
 
-def do_capture_window(_=None):
-    _run_capture(capture.capture_window)
-
-
-def do_capture_window_mac(_=None):
+def do_capture_window_current(_=None):
+    """Chup cua so dang active, luon ap dung style macOS."""
     _run_capture(capture.capture_window, mac_style=True)
+
+
+def _on_hotkey(action_id):
+    if action_id == "full":
+        do_capture_full()
+    elif action_id == "region":
+        do_capture_region()
+    elif action_id == "window":
+        do_capture_window_current()
 
 
 def toggle_delay(item):
     _state["delay"] = 3 if item.get_active() else 0
 
 
-def open_current_dir(_=None):
-    subprocess.Popen(["xdg-open", "/tmp"])
-
-
 def quit_app(_=None):
+    hotkeys.uninstall()
     Gtk.main_quit()
+
+
+def _menu_item_with_accel(label, accel_text, callback):
+    """Menu item co hint phim tat ben phai (kieu macOS)."""
+    item = Gtk.MenuItem()
+    box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=28)
+    name = Gtk.Label(label=label, xalign=0)
+    name.set_hexpand(True)
+    hint = Gtk.Label(label=accel_text, xalign=1)
+    hint.get_style_context().add_class("mini-screenshot-accel")
+    box.pack_start(name, True, True, 0)
+    box.pack_end(hint, False, False, 0)
+    item.add(box)
+    item.connect("activate", callback)
+    return item
 
 
 # ---------------------------------------------------------------------------
@@ -133,49 +283,58 @@ def quit_app(_=None):
 # ---------------------------------------------------------------------------
 
 def _list_windows():
-    if not shutil.which("wmctrl"):
-        return None  # None = wmctrl chua cai, khac voi [] = khong co cua so nao
-    try:
-        out = subprocess.run(
-            ["wmctrl", "-lx"], capture_output=True, text=True, check=True
-        ).stdout
-    except Exception:
-        return None
-
-    windows = []
-    for line in out.splitlines():
-        parts = line.split(None, 4)
-        if len(parts) < 5:
-            continue
-        win_id, _desktop, _wm_class, _host, title = parts
-        title = title.strip()
-        if title:
-            windows.append((win_id, title))
-    return windows
+    # None = wmctrl chua cai, khac voi [] = khong co cua so nao.
+    return capture.list_windows()
 
 
 def _capture_specific_window(win_id):
-    if shutil.which("wmctrl"):
-        subprocess.run(["wmctrl", "-ia", win_id])
-        time.sleep(0.4)  # doi GNOME chuyen focus xong roi moi chup
-    _run_capture(capture.capture_window)
+    if _state["busy"]:
+        return
+    _state["busy"] = True
+    delay = _state["delay"]
+    try:
+        path = capture.capture_window_by_id(
+            win_id, mac_style=True, delay=delay
+        )
+    except SystemExit:
+        return
+    finally:
+        _state["busy"] = False
+    _open_editor(path)
 
 
-def _build_window_submenu():
+def _build_window_submenu(parent_item):
+    """Submenu 'Chup cua so': cua so hien tai, lam moi, danh sach cua so."""
     submenu = Gtk.Menu()
+
+    current_item = _menu_item_with_accel(
+        "Cửa sổ hiện tại",
+        hotkeys.display_label("window"),
+        do_capture_window_current,
+    )
+    submenu.append(current_item)
+
+    refresh_item = Gtk.MenuItem(label="Làm mới danh sách")
+    refresh_item.connect(
+        "activate", lambda w: parent_item.set_submenu(_build_window_submenu(parent_item))
+    )
+    submenu.append(refresh_item)
+
+    submenu.append(Gtk.SeparatorMenuItem())
+
     windows = _list_windows()
 
     if windows is None:
-        item = Gtk.MenuItem(label="Chua cai wmctrl (sudo apt install wmctrl)")
+        item = Gtk.MenuItem(label="Chưa cài wmctrl — sudo apt install wmctrl")
         item.set_sensitive(False)
         submenu.append(item)
     elif not windows:
-        item = Gtk.MenuItem(label="Khong tim thay cua so nao (XWayland)")
+        item = Gtk.MenuItem(label="Không tìm thấy cửa sổ (XWayland)")
         item.set_sensitive(False)
         submenu.append(item)
     else:
         for win_id, title in windows:
-            label = title if len(title) <= 55 else title[:52] + "..."
+            label = title if len(title) <= 48 else title[:45] + "…"
             item = Gtk.MenuItem(label=label)
             item.connect("activate", lambda w, wid=win_id: _capture_specific_window(wid))
             submenu.append(item)
@@ -191,33 +350,23 @@ def _build_window_submenu():
 def build_menu():
     menu = Gtk.Menu()
 
-    item_full = Gtk.MenuItem(label="📷 Chụp toàn màn hình")
-    item_full.connect("activate", do_capture_full)
-    menu.append(item_full)
+    menu.append(_build_header())
+    menu.append(Gtk.SeparatorMenuItem())
 
-    item_region = Gtk.MenuItem(label="✂️  Chụp vùng chọn")
-    item_region.connect("activate", do_capture_region)
-    menu.append(item_region)
+    menu.append(_menu_item_with_accel(
+        "Toàn màn hình", hotkeys.display_label("full"), do_capture_full
+    ))
+    menu.append(_menu_item_with_accel(
+        "Vùng chọn", hotkeys.display_label("region"), do_capture_region
+    ))
 
-    item_window = Gtk.MenuItem(label="🪟 Chụp cửa sổ hiện tại")
-    item_window.connect("activate", do_capture_window)
-    menu.append(item_window)
-
-    item_window_mac = Gtk.MenuItem(label="🪟 Chụp cửa sổ (style macOS)")
-    item_window_mac.connect("activate", do_capture_window_mac)
-    menu.append(item_window_mac)
-
-    # submenu chon cua so, build lai moi lan mo de danh sach luon moi
-    window_list_item = Gtk.MenuItem(label="📋 Chọn cửa sổ từ danh sách")
-    window_list_item.connect(
-        "activate", lambda w: window_list_item.set_submenu(_build_window_submenu())
-    )
-    window_list_item.set_submenu(_build_window_submenu())
-    menu.append(window_list_item)
+    window_item = Gtk.MenuItem(label="Cửa sổ")
+    window_item.set_submenu(_build_window_submenu(window_item))
+    menu.append(window_item)
 
     menu.append(Gtk.SeparatorMenuItem())
 
-    delay_item = Gtk.CheckMenuItem(label="⏱ Đợi 3 giây trước khi chụp")
+    delay_item = Gtk.CheckMenuItem(label="Đợi 3 giây trước khi chụp")
     delay_item.connect("toggled", toggle_delay)
     menu.append(delay_item)
 
@@ -232,13 +381,28 @@ def build_menu():
 
 
 def main():
+    # Che do ping tu GNOME custom shortcut (Wayland) — khong mo tray moi.
+    if len(sys.argv) >= 3 and sys.argv[1] == "--hotkey":
+        ok = hotkeys.ping(sys.argv[2])
+        sys.exit(0 if ok else 1)
+
     missing = capture.check_dependencies()
     if missing:
         print("Thieu cong cu he thong: " + ", ".join(missing))
         print("Cai dat bang: sudo apt install " + " ".join(missing))
         sys.exit(1)
 
+    _apply_dark_theme()
     menu = build_menu()
+
+    backend = hotkeys.install(_on_hotkey, os.path.abspath(__file__))
+    if backend:
+        print(f"Phim tat: Ctrl+Shift+3/4/5 (backend: {backend})")
+    else:
+        print(
+            "Canh bao: khong dang ky duoc phim tat global. "
+            "Cai gir1.2-keybinder-3.0 (X11) hoac dung GNOME."
+        )
 
     if HAS_INDICATOR:
         indicator = AppIndicator3.Indicator.new(
@@ -258,7 +422,10 @@ def main():
             lambda icon: menu.popup(None, None, None, icon, 0, Gtk.get_current_event_time()),
         )
 
-    Gtk.main()
+    try:
+        Gtk.main()
+    finally:
+        hotkeys.uninstall()
 
 
 if __name__ == "__main__":
