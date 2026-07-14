@@ -94,9 +94,10 @@ Maintainer: Ban <you@example.com>
 Description: Mini Screenshot Tool - chup va chinh sua anh man hinh
  Cong cu chup man hinh mini cho Ubuntu/GNOME Wayland, ho tro chon vung,
  chon cua so can chup tu danh sach (wmctrl), ve/annotate (but, mui ten,
- chu nhat, hinh tron, highlight, text, danh so buoc), blur/pixelate che
- thong tin nhay cam, crop, color picker, undo/redo, luu file hoac copy
- thang vao clipboard.
+ chu nhat, hinh tron, highlight, text, danh so buoc, spotlight, ruler),
+ blur/pixelate/auto-redact che thong tin nhay cam, crop, color picker,
+ lich su chup gan nhat, ghim anh noi always-on-top, undo/redo, luu file
+ hoac copy thang vao clipboard.
 EOF
 
 echo ">> Tao script khoi chay usr/bin/${APP_NAME}..."

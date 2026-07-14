@@ -22,11 +22,20 @@ It auto-detects your desktop and picks the right capture backend:
 - Dark-themed **editor** that opens automatically after every shot:
   - Pen, line, arrow, rectangle, ellipse
   - Highlighter, text, numbered steps
+  - **Spotlight** — dim everything except the selected area
+  - **Ruler** — measure pixel distance between two points
   - Blur / pixelate, crop, color picker (hex → clipboard)
+  - **Auto-redact** — OCR-based one-click detection & blur of emails, phone
+    numbers, card numbers, and CCCD/CMND-style IDs (regex-based; always
+    review the result before sharing — it's a time-saver, not a guarantee)
+  - Quick color presets + full color picker
   - OCR (full image or selection) via Tesseract
+  - Copy image, **copy file path**, or **copy as Markdown** (`![](path)`)
   - Undo / Redo (`Ctrl+Z` / `Ctrl+Shift+Z`)
 - Save (`Ctrl+S`) or copy to clipboard (`Ctrl+C`)
 - System tray with macOS-style hotkeys; `Ctrl+Alt+Shift+3/4/5` copy straight to clipboard (no editor)
+- **Lịch sử (History)** — the last 12 captures are kept in a tray submenu; reopen any of them in the Editor, copy again, or pin them
+- **Pin** — float any capture as a small always-on-top window (drag to move, scroll to adjust opacity, `Ctrl +`/`Ctrl -` to resize, `Esc`/double-click to close)
 
 ---
 
@@ -67,9 +76,18 @@ python3 main.py --tray               # system tray
 python3 -m mini_screenshot --tray    # same, via package module
 ```
 
-- **Region:** drag to select, `Esc` to cancel  
-- **Window (GNOME):** pick from the list → OK; Cancel / no `wmctrl` → active window  
+- **Region:** drag to select, `Esc` to cancel
+- **Window (GNOME):** pick from the list → OK; Cancel / no `wmctrl` → active window
 - After any capture, the **Edit** window opens for annotate / crop / blur / OCR
+
+### Editor tool cheatsheet
+
+| Tool | What it does |
+|------|---------------|
+| Spotlight | Drag a box — everything outside it gets dimmed, drawing the eye to what's inside |
+| Ruler | Drag between two points — draws tick marks + a `NNNpx` label |
+| Auto-redact (toolbar button, top-right) | Runs OCR, regex-matches likely emails/phones/card numbers/IDs, pixelates each match |
+| Copy `⋯` menu (next to Copy) | "Copy đường dẫn file" / "Copy dạng Markdown" — saves the current edit to history first, then copies the path or `![](path)` |
 
 ---
 
@@ -120,17 +138,20 @@ mini-screenshot/
 ├── mini_screenshot/        # Application package
 │   ├── __init__.py
 │   ├── __main__.py         # python3 -m mini_screenshot
-│   ├── cli.py              # Argparse + capture → editor flow
-│   ├── capture.py          # GNOME / grim+slurp + wmctrl window list
-│   ├── editor.py           # Dark annotate UI
-│   ├── icons.py            # Vector toolbar icons
+│   ├── cli.py               # Argparse + capture → editor flow
+│   ├── capture.py           # GNOME / grim+slurp + wmctrl window list
+│   ├── editor.py             # Dark annotate UI (incl. spotlight/ruler/redact/copy-as)
+│   ├── icons.py              # Vector toolbar icons
 │   ├── ocr.py / ocr_dialog.py
-│   ├── tray.py             # AppIndicator menu + capture actions
-│   ├── hotkeys.py          # Global hotkeys (gsettings / Keybinder)
-│   ├── clipboard_util.py   # PNG → clipboard
-│   ├── mac_window_style.py # Rounded window + shadow post-process
-│   ├── open_editor.py      # Spawn editor from tray (separate Qt process)
-│   └── qt_env.py           # QT_QPA_PLATFORM helper
+│   ├── redact.py             # NEW — OCR + regex sensitive-info detection
+│   ├── history.py            # NEW — recent-capture index on disk
+│   ├── pin_window.py         # NEW — floating always-on-top viewer
+│   ├── tray.py               # AppIndicator menu, history + pin + capture actions
+│   ├── hotkeys.py            # Global hotkeys (gsettings / Keybinder)
+│   ├── clipboard_util.py     # PNG → clipboard
+│   ├── mac_window_style.py   # Rounded window + shadow post-process
+│   ├── open_editor.py        # Spawn editor from tray (separate Qt process)
+│   └── qt_env.py             # QT_QPA_PLATFORM helper
 ├── install.sh
 ├── packaging/
 │   ├── build-deb.sh
@@ -178,11 +199,13 @@ Rebuild after code changes: run `./packaging/build-deb.sh` again, then `sudo apt
 - Tested on **GNOME Wayland**. On X11, `grim`/`slurp` often still work; report issues if not.
 - If `Ctrl+C` paste fails elsewhere, install `wl-clipboard` — the app prefers `wl-copy` for compatibility.
 - GNOME window picker uses `wmctrl` (XWayland windows). Pure Wayland-native windows may be missing — a Wayland security limit, not an app bug.
+- History files live under `$XDG_STATE_HOME/mini-screenshot/history` (falls back to `~/.local/state/...`); only the last 12 captures are kept, older ones are pruned automatically.
+- Auto-redact is regex-based (email / VN phone / card-like digit runs / CCCD-CMND-like IDs) and only as good as the OCR read — always eyeball the result before sharing a screenshot.
 
 ---
 
 ## Roadmap
 
 - [ ] Scrolling / long-page capture
-- [ ] Recent capture history
-- [ ] Pin image as always-on-top floating window
+- [ ] Short screen recording (GIF) via `wf-recorder`
+- [ ] OCR result → quick translate

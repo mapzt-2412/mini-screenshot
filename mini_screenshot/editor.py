@@ -12,16 +12,25 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QToolBar, QAction, QColorDialog,
     QFileDialog, QInputDialog, QLabel, QSpinBox, QMessageBox, QActionGroup,
     QVBoxLayout, QScrollArea, QSizePolicy, QToolButton, QFrame, QStatusBar,
+    QMenu,
 )
 
-from . import clipboard_util, icons, ocr
+from . import clipboard_util, history, icons, ocr, redact
 from .ocr_dialog import OcrResultDialog
 
 
 TOOLS = [
     "select", "pen", "line", "arrow", "rect", "ellipse",
-    "highlighter", "text", "step", "blur", "pixelate", "crop", "picker", "ocr",
+    "highlighter", "text", "step", "spotlight", "ruler",
+    "blur", "pixelate", "crop", "picker", "ocr",
 ]
+
+# Rect-based tools that show a dashed selection preview while dragging
+# (as opposed to shape tools like rect/ellipse/line/arrow which preview
+# the actual shape being drawn).
+_RECT_PREVIEW_TOOLS = ("crop", "blur", "pixelate", "ocr", "spotlight")
+
+PRESET_COLORS = ["#ff3b30", "#ffd23f", "#34c759", "#3d6bff", "#ffffff", "#000000"]
 
 
 class Canvas(QWidget):
@@ -52,6 +61,7 @@ class Canvas(QWidget):
 
         self.undo_stack = [self.base_pixmap.copy()]
         self.redo_stack = []
+        self._undo_step_counters = [1]
 
         self.drawing = False
         self.start_point = QPoint()
@@ -103,19 +113,27 @@ class Canvas(QWidget):
 
     def push_undo(self, pixmap):
         self.undo_stack.append(pixmap)
+        self._undo_step_counters.append(self.step_counter)
         self.redo_stack.clear()
         self._apply_zoom_size()
         self.update()
 
     def undo(self):
         if len(self.undo_stack) > 1:
-            self.redo_stack.append(self.undo_stack.pop())
+            self.redo_stack.append((
+                self.undo_stack.pop(),
+                self._undo_step_counters.pop(),
+            ))
+            self.step_counter = self._undo_step_counters[-1]
             self._apply_zoom_size()
             self.update()
 
     def redo(self):
         if self.redo_stack:
-            self.undo_stack.append(self.redo_stack.pop())
+            pixmap, step_counter = self.redo_stack.pop()
+            self.undo_stack.append(pixmap)
+            self._undo_step_counters.append(step_counter)
+            self.step_counter = step_counter
             self._apply_zoom_size()
             self.update()
 
@@ -145,12 +163,14 @@ class Canvas(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
         painter.scale(self.zoom, self.zoom)
         painter.drawPixmap(0, 0, self.current_pixmap())
-        if self.drawing and self.tool not in ("crop", "blur", "pixelate", "ocr"):
-            self._draw_preview(painter)
-        elif self.drawing and self.tool in ("crop", "blur", "pixelate", "ocr"):
+        if self.drawing and self.tool == "ruler":
+            self._draw_ruler_preview(painter)
+        elif self.drawing and self.tool in _RECT_PREVIEW_TOOLS:
             pen = QPen(QColor(0, 150, 255), max(1, round(1 / self.zoom)), Qt.DashLine)
             painter.setPen(pen)
             painter.drawRect(QRect(self.start_point, self.end_point))
+        elif self.drawing:
+            self._draw_preview(painter)
 
     def _draw_preview(self, painter):
         pen = QPen(self.pen_color, self.pen_width, Qt.SolidLine,
@@ -173,6 +193,17 @@ class Canvas(QWidget):
             ax = p2.x() - arrow_size * math.cos(angle - da)
             ay = p2.y() - arrow_size * math.sin(angle - da)
             painter.drawLine(p2, QPoint(int(ax), int(ay)))
+
+    def _draw_ruler_preview(self, painter):
+        pen = QPen(QColor(255, 210, 63), max(1.6, 2 / self.zoom), Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(self.start_point, self.end_point)
+        dist = math.hypot(self.end_point.x() - self.start_point.x(),
+                           self.end_point.y() - self.start_point.y())
+        mid = QPoint((self.start_point.x() + self.end_point.x()) // 2,
+                      (self.start_point.y() + self.end_point.y()) // 2)
+        painter.setFont(QFont("Sans", 10, QFont.Bold))
+        painter.drawText(mid + QPoint(8, -8), f"{dist:.0f}px")
 
     # ---------- mouse events ----------
     def mousePressEvent(self, event):
@@ -220,11 +251,11 @@ class Canvas(QWidget):
             self.push_undo(pm)
             return
 
-        if self.tool == "pen":
+        if self.tool in ("pen", "highlighter"):
+            self.push_undo(self.current_pixmap().copy())
             self.drawing = True
             self.start_point = pos
             self.end_point = pos
-            self._free_path = [pos]
             return
 
         self.drawing = True
@@ -272,7 +303,6 @@ class Canvas(QWidget):
         pos = self._map_to_image(event.pos())
 
         if self.tool in ("pen", "highlighter"):
-            self.push_undo(self.current_pixmap().copy())
             return
 
         rect = QRect(self.start_point, pos).normalized()
@@ -306,6 +336,18 @@ class Canvas(QWidget):
                 pm = self._apply_censor(self.current_pixmap(), rect, self.tool)
                 self.push_undo(pm)
 
+        elif self.tool == "spotlight":
+            if rect.width() > 3 and rect.height() > 3:
+                pm = self._apply_spotlight(self.current_pixmap(), rect)
+                self.push_undo(pm)
+                self.status_message.emit("Da lam toi phan con lai, noi bat vung chon")
+
+        elif self.tool == "ruler":
+            pm = self._draw_ruler(self.current_pixmap().copy(), self.start_point, pos)
+            self.push_undo(pm)
+            dist = math.hypot(pos.x() - self.start_point.x(), pos.y() - self.start_point.y())
+            self.status_message.emit(f"Khoang cach: {dist:.0f}px")
+
         elif self.tool == "ocr":
             if rect.width() > 3 and rect.height() > 3:
                 region = self.current_pixmap().copy(rect)
@@ -328,6 +370,57 @@ class Canvas(QWidget):
 
         painter = QPainter(pm)
         painter.drawImage(rect.topLeft(), result)
+        painter.end()
+        return pm
+
+    def _apply_spotlight(self, pixmap, rect):
+        """Lam toi toan bo anh tru vung `rect` (nguoc lai voi blur/pixelate:
+        che nen de noi bat 1 chi tiet, thay vi che chi tiet do)."""
+        rect = rect.intersected(QRect(0, 0, pixmap.width(), pixmap.height()))
+        pm = pixmap.copy()
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 150))
+
+        top = QRect(0, 0, pm.width(), rect.top())
+        bottom = QRect(0, rect.bottom(), pm.width(), pm.height() - rect.bottom())
+        left = QRect(0, rect.top(), rect.left(), rect.height())
+        right = QRect(rect.right(), rect.top(), pm.width() - rect.right(), rect.height())
+        for r in (top, bottom, left, right):
+            if r.width() > 0 and r.height() > 0:
+                painter.drawRect(r)
+
+        painter.setPen(QPen(QColor(255, 210, 63), 2))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(rect)
+        painter.end()
+        return pm
+
+    def _draw_ruler(self, pm, p1, p2):
+        """Ve thuoc do (duong + tick 2 dau + nhan px) truc tiep len anh."""
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(255, 210, 63), 2, Qt.SolidLine, Qt.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(p1, p2)
+        for pt in (p1, p2):
+            painter.drawLine(pt.x() - 5, pt.y(), pt.x() + 5, pt.y())
+            painter.drawLine(pt.x(), pt.y() - 5, pt.x(), pt.y() + 5)
+
+        dist = math.hypot(p2.x() - p1.x(), p2.y() - p1.y())
+        label = f"{dist:.0f}px"
+        mid = QPoint((p1.x() + p2.x()) // 2, (p1.y() + p2.y()) // 2)
+        font = QFont("Sans", 11, QFont.Bold)
+        painter.setFont(font)
+        metrics_rect = painter.fontMetrics().boundingRect(label)
+        bg = QRect(mid.x() + 6, mid.y() - metrics_rect.height() - 4,
+                    metrics_rect.width() + 12, metrics_rect.height() + 8)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(0, 0, 0, 190))
+        painter.drawRoundedRect(bg, 4, 4)
+        painter.setPen(QColor(255, 210, 63))
+        painter.drawText(bg.adjusted(6, 3, -3, -1), Qt.AlignLeft | Qt.AlignVCenter, label)
         painter.end()
         return pm
 
@@ -439,6 +532,9 @@ class EditorWindow(QMainWindow):
         ("text", "Chen text"),
         ("step", "Danh so buoc"),
         None,
+        ("spotlight", "Spotlight — lam toi nen, noi bat vung chon"),
+        ("ruler", "Ruler — do khoang cach (px)"),
+        None,
         ("blur", "Lam mo vung anh"),
         ("pixelate", "Pixelate (che thong tin)"),
         ("crop", "Crop / cat anh"),
@@ -537,6 +633,19 @@ class EditorWindow(QMainWindow):
         self.color_btn.clicked.connect(self._choose_color)
         tb.addWidget(self.color_btn)
 
+        # --- preset mau nhanh ---
+        for hex_color in PRESET_COLORS:
+            swatch = QToolButton()
+            swatch.setFixedSize(18, 38)
+            swatch.setToolTip(hex_color)
+            swatch.setStyleSheet(
+                f"QToolButton {{ background: {hex_color}; border-radius: 4px; "
+                f"border: 1px solid {BORDER}; margin: 0px 1px; }}"
+                f"QToolButton:hover {{ border: 1px solid {ICON_COLOR}; }}"
+            )
+            swatch.clicked.connect(lambda checked, c=hex_color: self._pick_preset_color(c))
+            tb.addWidget(swatch)
+
         tb.addWidget(QLabel("  Do day "))
         spin = QSpinBox()
         spin.setRange(1, 20)
@@ -598,6 +707,16 @@ class EditorWindow(QMainWindow):
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         tb.addWidget(spacer)
 
+        # --- redact ---
+        redact_act = QAction(icons.make_icon("redact", color=ICON_COLOR), "", self)
+        redact_act.setToolTip("Tự động phát hiện & che thông tin nhạy cảm "
+                               "(email / SĐT / số thẻ / CCCD)")
+        redact_act.triggered.connect(self._auto_redact)
+        tb.addAction(redact_act)
+        self._style_action_button(tb, redact_act)
+
+        tb.addWidget(_vsep())
+
         # --- export ---
         save_act = QAction(icons.make_icon("save", color=ICON_COLOR), "", self)
         save_act.setToolTip("Luu file (Ctrl+S)")
@@ -612,6 +731,18 @@ class EditorWindow(QMainWindow):
         copy_act.triggered.connect(self._copy_clipboard)
         tb.addAction(copy_act)
         self._style_action_button(tb, copy_act)
+
+        # --- copy as... (path / markdown) ---
+        copy_as_btn = QToolButton()
+        copy_as_btn.setText("⋯")
+        copy_as_btn.setToolTip("Copy dạng khác (đường dẫn file / Markdown)")
+        copy_as_btn.setFixedSize(30, 38)
+        copy_as_menu = QMenu(copy_as_btn)
+        copy_as_menu.addAction("Copy đường dẫn file", self._copy_as_path)
+        copy_as_menu.addAction("Copy dạng Markdown", self._copy_as_markdown)
+        copy_as_btn.setMenu(copy_as_menu)
+        copy_as_btn.setPopupMode(QToolButton.InstantPopup)
+        tb.addWidget(copy_as_btn)
 
         ocr_act = QAction(icons.make_icon("ocr", color=ICON_COLOR), "", self)
         ocr_act.setToolTip("Extract Text — OCR toan anh")
@@ -639,6 +770,11 @@ class EditorWindow(QMainWindow):
         if color.isValid():
             self.canvas.pen_color = color
             self.color_btn.setIcon(icons.color_swatch_icon(color))
+
+    def _pick_preset_color(self, hex_color):
+        color = QColor(hex_color)
+        self.canvas.pen_color = color
+        self.color_btn.setIcon(icons.color_swatch_icon(color))
 
     def _save_file(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -680,6 +816,75 @@ class EditorWindow(QMainWindow):
         )
         dlg = OcrResultDialog(text, self)
         dlg.exec_()
+
+    def _auto_redact(self):
+        missing = ocr.missing_dependencies()
+        if missing:
+            lines = []
+            if "tesseract-ocr" in missing:
+                lines.append("sudo apt install tesseract-ocr")
+            if "python3-pytesseract" in missing:
+                lines.append("pip3 install --break-system-packages pytesseract")
+            QMessageBox.warning(
+                self, "Thieu OCR",
+                "Auto-redact can OCR. Can cai dat:\n  " + "\n  ".join(lines),
+            )
+            return
+
+        self.statusBar().showMessage("Dang quet thong tin nhay cam...", 0)
+        QApplication.processEvents()
+        try:
+            boxes = redact.find_sensitive_regions(self.canvas.get_final_pixmap())
+        except Exception as e:
+            self.statusBar().clearMessage()
+            QMessageBox.critical(self, "Loi", str(e))
+            return
+
+        if not boxes:
+            self.statusBar().showMessage(
+                "Khong tim thay thong tin nhay cam ro rang (email/SDT/the/CCCD).", 5000
+            )
+            return
+
+        pm = self.canvas.get_final_pixmap().copy()
+        for box in boxes:
+            padded = box.adjusted(-4, -3, 4, 3)
+            pm = self.canvas._apply_censor(pm, padded, "pixelate")
+        self.canvas.push_undo(pm)
+        self.statusBar().showMessage(
+            f"Da che {len(boxes)} vung nghi chua thong tin nhay cam — "
+            f"kiem tra lai truoc khi chia se.",
+            6000,
+        )
+
+    def _ensure_saved_copy(self):
+        """Luu ban hien tai vao thu muc lich su, tra ve duong dan da luu."""
+        tmp = "/tmp/_mini_screenshot_export.png"
+        try:
+            self.canvas.get_final_pixmap().save(tmp)
+            saved = history.add(tmp)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        return saved
+
+    def _copy_as_path(self):
+        path = self._ensure_saved_copy()
+        if path:
+            QApplication.clipboard().setText(path)
+            self.statusBar().showMessage(f"Da copy duong dan: {path}", 4000)
+        else:
+            self.statusBar().showMessage("Khong the luu anh de lay duong dan.", 4000)
+
+    def _copy_as_markdown(self):
+        path = self._ensure_saved_copy()
+        if path:
+            QApplication.clipboard().setText(f"![]({path})")
+            self.statusBar().showMessage("Da copy dang Markdown vao clipboard", 4000)
+        else:
+            self.statusBar().showMessage("Khong the luu anh de tao Markdown.", 4000)
 
     def _copy_clipboard(self):
         image = self.canvas.get_final_pixmap().toImage()

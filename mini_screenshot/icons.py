@@ -231,6 +231,71 @@ def icon_ocr(color="#e8e8e8", size=28):
     return _finish(pm, p)
 
 
+def icon_spotlight(color="#e8e8e8", size=28):
+    """Vien toi + vong sang giua (Spotlight / dim background)."""
+    pm, p = _canvas(size)
+    p.setPen(Qt.NoPen)
+    p.setBrush(QColor(0, 0, 0, 150))
+    p.drawRoundedRect(QRectF(2, 2, size - 4, size - 4), 4, 4)
+    p.setBrush(QColor(color))
+    p.drawEllipse(QPointF(size / 2, size / 2), 6.5, 6.5)
+    p.setBrush(Qt.NoBrush)
+    p.setPen(QPen(QColor(color), 1.4))
+    p.drawRoundedRect(QRectF(2, 2, size - 4, size - 4), 4, 4)
+    return _finish(pm, p)
+
+
+def icon_ruler(color="#e8e8e8", size=28):
+    """Duong cheo co vach chia (Ruler / measure)."""
+    pm, p = _canvas(size)
+    pen = QPen(QColor(color), 2.0, Qt.SolidLine, Qt.RoundCap)
+    p.setPen(pen)
+    p.drawLine(5, 23, 23, 5)
+    for i in range(1, 5):
+        t = i / 5
+        x = 5 + (23 - 5) * t
+        y = 23 + (5 - 23) * t
+        p.drawLine(QPointF(x - 1.6, y - 1.6), QPointF(x + 1.6, y + 1.6))
+    return _finish(pm, p)
+
+
+def icon_redact(color="#e8e8e8", size=28):
+    """Dong text bi gach + dau cham do (Auto-redact)."""
+    pm, p = _canvas(size)
+    p.setPen(QPen(QColor(color), 2.0, Qt.SolidLine, Qt.RoundCap))
+    p.drawLine(5, 9, 23, 9)
+    p.drawLine(5, 14, 18, 14)
+    p.drawLine(5, 19, 20, 19)
+    p.setBrush(QColor("#ff3b30"))
+    p.setPen(Qt.NoPen)
+    p.drawEllipse(QPointF(21, 21), 5, 5)
+    p.setPen(QPen(Qt.white, 1.6, Qt.SolidLine, Qt.RoundCap))
+    p.drawLine(QPointF(18.5, 18.5), QPointF(23.5, 23.5))
+    return _finish(pm, p)
+
+
+def icon_pin(color="#e8e8e8", size=28):
+    """Icon ghim (pin) don gian."""
+    pm, p = _canvas(size)
+    p.setBrush(QColor(color))
+    p.setPen(Qt.NoPen)
+    p.drawEllipse(QPointF(14, 9), 6, 6)
+    p.setPen(QPen(QColor(color), 2.2, Qt.SolidLine, Qt.RoundCap))
+    p.drawLine(14, 14, 14, 24)
+    return _finish(pm, p)
+
+
+def icon_history(color="#e8e8e8", size=28):
+    """Icon dong ho voi mui ten quay lai (History)."""
+    pm, p = _canvas(size)
+    p.setPen(QPen(QColor(color), 2.0, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    p.setBrush(Qt.NoBrush)
+    p.drawEllipse(QRectF(5, 5, 18, 18))
+    p.drawLine(14, 9, 14, 14)
+    p.drawLine(14, 14, 18, 16)
+    return _finish(pm, p)
+
+
 ICON_MAKERS = {
     "pen": icon_pen,
     "line": icon_line,
@@ -249,6 +314,11 @@ ICON_MAKERS = {
     "save": icon_save,
     "copy": icon_copy,
     "ocr": icon_ocr,
+    "spotlight": icon_spotlight,
+    "ruler": icon_ruler,
+    "redact": icon_redact,
+    "pin": icon_pin,
+    "history": icon_history,
 }
 
 

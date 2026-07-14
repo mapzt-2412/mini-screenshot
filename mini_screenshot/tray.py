@@ -3,7 +3,10 @@
 
 Capture modes open the same editor as ``main.py``. Window shots use
 macOS-style post-processing. Hotkeys (macOS-like) register while the tray
-runs and unregister on exit.
+runs and unregister on exit. Every successful capture also gets a copy
+recorded to a small on-disk history (see ``history.py``), independent of
+the temp file used mid-capture — this backs the "Lich su" submenu and the
+"pin" (float on top) action.
 
 Extra deps: ``python3-gi``, ``gir1.2-appindicator3-0.1``, ``wmctrl``;
 optional ``gir1.2-keybinder-3.0`` (X11). On GNOME, enable the AppIndicator
@@ -31,7 +34,7 @@ except (ImportError, ValueError):
 
 from gi.repository import Gdk, Gtk
 
-from . import capture, clipboard_util, hotkeys
+from . import capture, clipboard_util, history, hotkeys
 
 APP_ID = "mini-screenshot-tray"
 ICON_NAME = "camera-photo-symbolic"
@@ -145,16 +148,18 @@ def _build_header():
 
 
 # ---------------------------------------------------------------------------
-# Open the editor in a separate process (avoid Qt vs Gtk main-loop clash).
+# Open the editor / pin window in a separate process (avoid Qt vs Gtk
+# main-loop clash).
 # ---------------------------------------------------------------------------
 
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.dirname(_PKG_DIR)
 _EDITOR_LAUNCHER = os.path.join(_PKG_DIR, "open_editor.py")
+_PIN_LAUNCHER = os.path.join(_PKG_DIR, "pin_window.py")
 _TRAY_ENTRY = os.path.join(_ROOT_DIR, "tray.py")
 
 
-def _open_editor(image_path):
+def _spawn_qt_process(script_path, image_path):
     if not image_path or not os.path.exists(image_path):
         return
     env = os.environ.copy()
@@ -163,10 +168,18 @@ def _open_editor(image_path):
         _ROOT_DIR + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     )
     subprocess.Popen(
-        [sys.executable, _EDITOR_LAUNCHER, image_path],
+        [sys.executable, script_path, image_path],
         cwd=_ROOT_DIR,
         env=env,
     )
+
+
+def _open_editor(image_path):
+    _spawn_qt_process(_EDITOR_LAUNCHER, image_path)
+
+
+def _open_pin(image_path):
+    _spawn_qt_process(_PIN_LAUNCHER, image_path)
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +212,11 @@ def _run_capture(fn, *args, clipboard_only=False, **kwargs):
 
     if not path or not os.path.exists(path):
         return
+
+    # Independent copy for the "Lich su" submenu / pin — do this before any
+    # clipboard-only cleanup deletes the original temp file.
+    history.add(path)
+
     if clipboard_only:
         clipboard_util.copy_capture_to_clipboard(path)
     else:
@@ -228,6 +246,14 @@ def do_clip_region(_=None):
 
 def do_clip_window(_=None):
     _run_capture(capture.capture_window, mac_style=True, clipboard_only=True)
+
+
+def do_pin_last(_=None):
+    """Ghim ban chup gan nhat thanh cua so noi always-on-top."""
+    recent = history.list_recent()
+    if not recent:
+        return
+    _open_pin(recent[0]["path"])
 
 
 def _on_hotkey(action_id):
@@ -291,6 +317,9 @@ def _capture_specific_window(win_id):
         return
     finally:
         _state["busy"] = False
+    if not path or not os.path.exists(path):
+        return
+    history.add(path)
     _open_editor(path)
 
 
@@ -335,6 +364,63 @@ def _build_window_submenu(parent_item):
 
 
 # ---------------------------------------------------------------------------
+# Lich su (recent captures)
+# ---------------------------------------------------------------------------
+
+def _build_history_submenu(parent_item):
+    submenu = Gtk.Menu()
+
+    recent = history.list_recent()
+
+    if not recent:
+        item = Gtk.MenuItem(label="Chưa có ảnh nào")
+        item.set_sensitive(False)
+        submenu.append(item)
+    else:
+        for entry in recent:
+            row = Gtk.Menu()
+            row_item = Gtk.MenuItem(label=history.label_for(entry))
+            row_item.set_submenu(row)
+
+            open_item = Gtk.MenuItem(label="Mở trong Editor")
+            open_item.connect("activate", lambda w, p=entry["path"]: _open_editor(p))
+            row.append(open_item)
+
+            pin_item = Gtk.MenuItem(label="Ghim (luôn nổi)")
+            pin_item.connect("activate", lambda w, p=entry["path"]: _open_pin(p))
+            row.append(pin_item)
+
+            copy_item = Gtk.MenuItem(label="Copy vào clipboard")
+            copy_item.connect(
+                "activate",
+                lambda w, p=entry["path"]: clipboard_util.copy_capture_to_clipboard(
+                    p, cleanup=False
+                ),
+            )
+            row.append(copy_item)
+
+            row.show_all()
+            submenu.append(row_item)
+
+        submenu.append(Gtk.SeparatorMenuItem())
+        clear_item = Gtk.MenuItem(label="Xóa lịch sử")
+        clear_item.connect("activate", lambda w: (
+            history.clear(),
+            parent_item.set_submenu(_build_history_submenu(parent_item)),
+        ))
+        submenu.append(clear_item)
+
+    refresh_item = Gtk.MenuItem(label="Làm mới")
+    refresh_item.connect(
+        "activate", lambda w: parent_item.set_submenu(_build_history_submenu(parent_item))
+    )
+    submenu.append(refresh_item)
+
+    submenu.show_all()
+    return submenu
+
+
+# ---------------------------------------------------------------------------
 # Main menu
 # ---------------------------------------------------------------------------
 
@@ -354,6 +440,14 @@ def build_menu():
     window_item = Gtk.MenuItem(label="Cửa sổ")
     window_item.set_submenu(_build_window_submenu(window_item))
     menu.append(window_item)
+
+    menu.append(Gtk.SeparatorMenuItem())
+
+    history_item = Gtk.MenuItem(label="Lịch sử")
+    history_item.set_submenu(_build_history_submenu(history_item))
+    menu.append(history_item)
+
+    menu.append(_menu_item_with_accel("Ghim ảnh gần nhất", "", do_pin_last))
 
     menu.append(Gtk.SeparatorMenuItem())
 
